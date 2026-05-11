@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LeCAI — Legal Contract Intelligence</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+
+<!-- ===== HEADER ===== -->
+<header class="header">
+  <div class="header-inner">
+    <div class="logo">
+      <div class="logo-icon">⚖</div>
+      <div class="logo-text">
+        <span class="logo-name">LeCAI</span>
+        <span class="logo-tagline">Contract Intelligence</span>
+      </div>
+    </div>
+    <nav class="header-nav"></nav>
+  </div>
+</header>
+
+<!-- ===== HERO UPLOAD ===== -->
+<main class="main">
+  <section class="hero">
+    <div class="hero-text">
+      <h1>AI-Powered <em>Legal Contract</em><br>Analysis Dashboard</h1>
+      <p class="hero-sub">Upload any contract. LeCAI extracts, classifies, and prioritizes every legal clause in seconds — giving you the intelligence to act fast.</p>
+    </div>
+
+    <div class="upload-card">
+      <form method="POST" enctype="multipart/form-data" id="uploadForm">
+        <div class="upload-zone" id="dropZone">
+          <div class="upload-icon">📄</div>
+          <div class="upload-label">Drop your contract here</div>
+          <div class="upload-sub">Supports PDF, DOCX, TXT</div>
+          <input type="file" name="file" id="fileInput" accept=".pdf,.docx,.txt" required>
+          <label for="fileInput" class="file-btn">Choose File</label>
+          <div class="file-chosen" id="fileChosen">No file chosen</div>
+        </div>
+        <button type="submit" class="analyze-btn" id="analyzeBtn">
+          <span class="btn-icon">🔍</span>
+          <span class="btn-text">Analyze Contract</span>
+          <span class="btn-loader" id="btnLoader" style="display:none">Analyzing…</span>
+        </button>
+      </form>
+    </div>
+  </section>
+
+  <!-- ===== UNSUPPORTED DOCUMENT ERROR ===== -->
+  {% if unsupported_error %}
+  <div class="alert-unsupported">
+    <div class="alert-unsupported-icon">❌</div>
+    <div class="alert-unsupported-content">
+      <div class="alert-unsupported-title">Unsupported Document Type</div>
+      <div class="alert-unsupported-message">{{ unsupported_error | safe }}</div>
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- ===== GENERAL ERROR ===== -->
+  {% if error %}
+  <div class="alert-error">⚠ {{ error }}</div>
+  {% endif %}
+
+  <!-- ===== RESULTS ===== -->
+  {% if doc_type %}
+  <section class="results-section" id="results">
+
+    <!-- Doc Type Banner -->
+    <div class="doc-banner">
+      <div class="doc-type-pill">{{ doc_type }}</div>
+      <div class="doc-meta">{{ total }} clauses analyzed · {{ high }} high risk</div>
+    </div>
+
+    <!-- ===== STAT CARDS ===== -->
+    <div class="stats-row">
+      <div class="stat-card stat-high">
+        <div class="stat-icon">🔴</div>
+        <div class="stat-num">{{ high }}</div>
+        <div class="stat-label">High Priority</div>
+        <div class="stat-bar"><div class="stat-fill" style="width: {% if total > 0 %}{{ (high/total*100)|int }}{% else %}0{% endif %}%"></div></div>
+      </div>
+      <div class="stat-card stat-medium">
+        <div class="stat-icon">🟡</div>
+        <div class="stat-num">{{ medium }}</div>
+        <div class="stat-label">Medium Priority</div>
+        <div class="stat-bar"><div class="stat-fill" style="width: {% if total > 0 %}{{ (medium/total*100)|int }}{% else %}0{% endif %}%"></div></div>
+      </div>
+      <div class="stat-card stat-low">
+        <div class="stat-icon">🟢</div>
+        <div class="stat-num">{{ low }}</div>
+        <div class="stat-label">Low Priority</div>
+        <div class="stat-bar"><div class="stat-fill" style="width: {% if total > 0 %}{{ (low/total*100)|int }}{% else %}0{% endif %}%"></div></div>
+      </div>
+      <div class="stat-card stat-total">
+        <div class="stat-icon">📋</div>
+        <div class="stat-num">{{ total }}</div>
+        <div class="stat-label">Total Clauses</div>
+        <div class="stat-bar"><div class="stat-fill" style="width:100%"></div></div>
+      </div>
+    </div>
+
+    <!-- ===== CHARTS GRID ===== -->
+    <div class="charts-grid">
+
+      <div class="chart-card">
+        <div class="chart-title">Priority Distribution</div>
+        <div class="chart-sub">Breakdown of clause risk levels</div>
+        <div class="chart-wrap">
+          <canvas id="priorityChart"></canvas>
+        </div>
+      </div>
+
+      <div class="chart-card">
+        <div class="chart-title">Model Confidence</div>
+        <div class="chart-sub">Confidence score distribution</div>
+        <div class="chart-wrap">
+          <canvas id="confidenceChart"></canvas>
+        </div>
+      </div>
+
+      <div class="chart-card chart-wide">
+        <div class="chart-title">Clause Type Frequency</div>
+        <div class="chart-sub">Top detected clause categories</div>
+        <div class="chart-wrap chart-wrap-bar">
+          <canvas id="labelChart"></canvas>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- ===== TABLE ===== -->
+    <div class="table-section">
+      <div class="table-header">
+        <div class="table-title">Clause Analysis Results</div>
+        <div class="table-controls">
+          <select id="filterPriority" onchange="filterTable()" class="filter-select">
+            <option value="all">All Priorities</option>
+            <option value="High">High</option>
+            <option value="Medium">Medium</option>
+            <option value="Low">Low</option>
+          </select>
+          <a href="/download" class="download-btn">⬇ Export PDF</a>
+        </div>
+      </div>
+
+      <div class="table-wrap">
+        <table id="clauseTable">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Clause Preview</th>
+              <th>Label</th>
+              <th>Priority</th>
+              <th>Confidence</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for r in results %}
+            <tr data-priority="{{ r.priority }}">
+              <td class="row-num">{{ loop.index }}</td>
+              <td class="clause-text">{{ r.clause|safe }}</td>
+              <td><span class="label-badge">{{ r.label }}</span></td>
+              <td>
+                <span class="priority-pill priority-{{ r.priority | lower }}">
+                  {{ r.priority }}
+                </span>
+              </td>
+              <td>
+                <div class="conf-wrap">
+                  <div class="conf-bar-bg">
+                    <div class="conf-bar-fill" style="width: {{ r.confidence }}"></div>
+                  </div>
+                  <span class="conf-num">{{ r.confidence }}</span>
+                </div>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+  </section>
+  {% endif %}
+
+</main>
+
+<!-- ===== FOOTER ===== -->
+<footer class="footer">
+  <div>LeCAI · LegalBERT Fine-Tuned · 30 Clause Types · AI-Powered Legal Intelligence</div>
+</footer>
+
+<!-- ===== SCRIPTS ===== -->
+<script>
+// File input label
+document.getElementById('fileInput').addEventListener('change', function() {
+  const name = this.files[0] ? this.files[0].name : 'No file chosen';
+  document.getElementById('fileChosen').textContent = name;
+});
+
+// Loading state
+document.getElementById('uploadForm').addEventListener('submit', function() {
+  document.getElementById('btnLoader').style.display = 'inline';
+  document.querySelector('.btn-text').style.display = 'none';
+  document.getElementById('analyzeBtn').disabled = true;
+});
+
+// Filter table
+function filterTable() {
+  const val = document.getElementById('filterPriority').value;
+  document.querySelectorAll('#clauseTable tbody tr').forEach(row => {
+    row.style.display = (val === 'all' || row.dataset.priority === val) ? '' : 'none';
+  });
+}
+
+// ===== CHARTS =====
+{% if doc_type %}
+const labelDist = {{ label_dist|safe }};
+const confDist  = {{ confidence_dist|safe }};
+
+// Priority Donut
+new Chart(document.getElementById('priorityChart'), {
+  type: 'doughnut',
+  data: {
+    labels: ['High', 'Medium', 'Low'],
+    datasets: [{
+      data: [{{ high }}, {{ medium }}, {{ low }}],
+      backgroundColor: ['#e63946', '#f4a261', '#2a9d8f'],
+      borderWidth: 3,
+      borderColor: '#ffffff',
+      hoverBorderWidth: 4
+    }]
+  },
+  options: {
+    cutout: '68%',
+    plugins: {
+      legend: { position: 'bottom', labels: { font: { family: 'DM Sans', size: 12 }, padding: 16 } }
+    }
+  }
+});
+
+// Confidence Bar
+new Chart(document.getElementById('confidenceChart'), {
+  type: 'bar',
+  data: {
+    labels: ['50–70%', '70–85%', '85–100%'],
+    datasets: [{
+      label: 'Clauses',
+      data: [confDist['50-70'], confDist['70-85'], confDist['85-100']],
+      backgroundColor: ['#e9c46a99', '#2a9d8f88', '#2a9d8f'],
+      borderRadius: 8,
+      borderSkipped: false
+    }]
+  },
+  options: {
+    plugins: { legend: { display: false } },
+    scales: {
+      x: { grid: { display: false }, ticks: { font: { family: 'DM Sans' } } },
+      y: { grid: { color: '#f0f0f0' }, ticks: { font: { family: 'DM Sans' } } }
+    }
+  }
+});
+
+// Label Horizontal Bar
+const sortedLabels = Object.entries(labelDist).sort((a,b) => b[1]-a[1]).slice(0, 12);
+new Chart(document.getElementById('labelChart'), {
+  type: 'bar',
+  data: {
+    labels: sortedLabels.map(x => x[0]),
+    datasets: [{
+      label: 'Count',
+      data: sortedLabels.map(x => x[1]),
+      backgroundColor: '#1a2e4a',
+      borderRadius: 6,
+      borderSkipped: false
+    }]
+  },
+  options: {
+    indexAxis: 'y',
+    plugins: { legend: { display: false } },
+    scales: {
+      x: { grid: { color: '#f0f0f0' }, ticks: { font: { family: 'DM Sans' } } },
+      y: { grid: { display: false }, ticks: { font: { family: 'DM Sans', size: 11 } } }
+    }
+  }
+});
+{% endif %}
+</script>
+
+</body>
+</html> 

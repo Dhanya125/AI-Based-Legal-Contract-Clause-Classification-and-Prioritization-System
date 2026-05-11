@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LexClarity AI | Legal Clause Intelligence Dashboard</title>
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600;9..40,700&family=DM+Serif+Display:opsz@9..40&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+
+<header class="site-header">
+    <div class="container header-inner">
+        <div class="logo-area">
+            <span class="logo-icon">⚖️</span>
+            <span class="logo-text">LexClarity AI</span>
+            <span class="tagline">legal intelligence suite</span>
+        </div>
+        <nav></nav>
+    </div>
+</header>
+
+<main class="container">
+    <div class="hero-grid">
+        <div>
+            <h1 class="hero-title">AI–powered <span class="hero-highlight">clause risk<br> analyzer</span></h1>
+            <p class="hero-desc">Upload your contract or legal document. Our classifier detects 30+ clause types and priority risks.</p>
+            <div style="display: flex; gap: 0.5rem; font-size: 0.8rem; color: var(--gray-600);">
+            </div>
+        </div>
+        <div>
+            <div id="uploadZone" class="upload-card">
+                <div class="upload-icon">📄</div>
+                <div class="upload-title">Drag & drop or browse</div>
+                <div class="formats">Supports PDF (max 15MB)</div>
+                <input type="file" id="fileInput" accept=".pdf" class="file-input">
+                <button id="uploadBtn" class="upload-btn">Select PDF document</button>
+                <div id="fileNameDisplay" class="file-name">No file chosen</div>
+            </div>
+        </div>
+    </div>
+
+    <div id="errorContainer"></div>
+    <div id="loadingIndicator" style="display: none;" class="loading-spinner">🔍 Analyzing clauses, building risk profile...</div>
+
+    <div id="resultsSection" style="display: none;">
+        <div class="stats-grid" id="statsGrid"></div>
+        <div class="charts-row">
+            <div class="chart-card"><div class="chart-title">Risk Distribution</div><canvas id="riskDoughnutChart"></canvas></div>
+            <div class="chart-card"><div class="chart-title">Top Clause Types</div><canvas id="topClausesChart"></canvas></div>
+        </div>
+
+        <div class="table-toolbar">
+            <div class="filter-group">
+                <label for="priorityFilter">Filter by priority: </label>
+                <select id="priorityFilter">
+                    <option value="all">All clauses</option>
+                    <option value="High">High risk</option>
+                    <option value="Medium">Medium risk</option>
+                    <option value="Low">Low risk</option>
+                </select>
+            </div>
+            <button id="exportPdfBtn" class="export-btn">📑 Export Report (PDF)</button>
+        </div>
+        <div class="table-wrapper">
+            <table id="clausesTable">
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        <th>Clause excerpt</th>
+                        <th>Label</th>
+                        <th>Priority</th>
+                    </tr>
+                </thead>
+                <tbody id="tableBody"></tbody>
+            </table>
+        </div>
+    </div>
+</main>
+<footer>
+    LexClarity AI • LegalBERT + hybrid rule system • High/Medium/Low risk priority
+</footer>
+
+<script>
+    const uploadZone = document.getElementById('uploadZone');
+    const fileInput = document.getElementById('fileInput');
+    const uploadBtn = document.getElementById('uploadBtn');
+    const fileNameDisplay = document.getElementById('fileNameDisplay');
+    const errorContainer = document.getElementById('errorContainer');
+    const loadingIndicator = document.getElementById('loadingIndicator');
+    const resultsSection = document.getElementById('resultsSection');
+
+    let currentResults = [];
+    let riskChart, topClausesChart;
+
+    function showError(message) {
+        errorContainer.innerHTML = `<div class="alert alert-error"><span>⚠️</span><div>${message}</div></div>`;
+        setTimeout(() => { errorContainer.innerHTML = ''; }, 5000);
+    }
+
+    function showSuccess(message) {
+        errorContainer.innerHTML = `<div class="alert alert-success"><span>✅</span><div>${message}</div></div>`;
+        setTimeout(() => { errorContainer.innerHTML = ''; }, 3000);
+    }
+
+    async function analyzePDF(file) {
+        const formData = new FormData();
+        formData.append('file', file);
+
+        try {
+            const response = await fetch('/analyze', { method: 'POST', body: formData });
+            const data = await response.json();
+
+            if (data.success) {
+                currentResults = data.results;
+                renderDashboard(data.results, data.stats);
+                showSuccess(`Analysis complete! Found ${data.results.length} clauses.`);
+            } else {
+                showError(data.error || 'Analysis failed');
+            }
+        } catch (error) {
+            showError('Error connecting to server');
+        } finally {
+            loadingIndicator.style.display = 'none';
+        }
+    }
+
+    function renderDashboard(results, stats) {
+        resultsSection.style.display = 'block';
+        
+        document.getElementById('statsGrid').innerHTML = `
+            <div class="stat-card">
+                <div class="stat-label">High Risk</div>
+                <div class="stat-number" style="color:var(--high);">${stats.high}</div>
+                <div class="stat-bar"><div class="stat-bar-fill high-fill" style="width:${stats.total ? (stats.high/stats.total)*100 : 0}%"></div></div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Medium Risk</div>
+                <div class="stat-number" style="color:var(--medium);">${stats.medium}</div>
+                <div class="stat-bar"><div class="stat-bar-fill medium-fill" style="width:${stats.total ? (stats.medium/stats.total)*100 : 0}%"></div></div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Low Risk</div>
+                <div class="stat-number" style="color:var(--low);">${stats.low}</div>
+                <div class="stat-bar"><div class="stat-bar-fill low-fill" style="width:${stats.total ? (stats.low/stats.total)*100 : 0}%"></div></div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Total Clauses</div>
+                <div class="stat-number">${stats.total}</div>
+            </div>
+        `;
+
+        updateRiskChart(stats.high, stats.medium, stats.low);
+        updateTopClauses(results);
+        renderTableRows(results, 'all');
+        
+        const filterSelect = document.getElementById('priorityFilter');
+        filterSelect.onchange = (e) => renderTableRows(results, e.target.value);
+    }
+
+    function renderTableRows(results, filterPriority) {
+        const filtered = filterPriority === 'all' ? results : results.filter(r => r.priority === filterPriority);
+        document.getElementById('tableBody').innerHTML = filtered.map(r => `
+            <tr>
+                <td>${r.id}</td>
+                <td>${highlightText(r.clause_preview)}</td>
+                <td><span class="badge">${escapeHtml(r.label)}</span></td>
+                <td><span class="badge badge-${r.priority.toLowerCase()}">${r.priority}</span></td>
+            </tr>
+        `).join('');
+    }
+
+    function highlightText(text) {
+        const keywords = ['terminate', 'liability', 'indemnify', 'confidential', 'assign', 'compete'];
+        let highlighted = text;
+        keywords.forEach(kw => {
+            const regex = new RegExp(`(${kw})`, 'gi');
+            highlighted = highlighted.replace(regex, `<mark>$1</mark>`);
+        });
+        return highlighted;
+    }
+
+    function updateRiskChart(high, medium, low) {
+        const ctx = document.getElementById('riskDoughnutChart').getContext('2d');
+        if (riskChart) riskChart.destroy();
+        riskChart = new Chart(ctx, {
+            type: 'doughnut',
+            data: { 
+                labels: ['High Risk', 'Medium Risk', 'Low Risk'], 
+                datasets: [{ 
+                    data: [high, medium, low], 
+                    backgroundColor: ['#C44536', '#E9B35F', '#2B7A4B'],
+                    borderWidth: 0
+                }] 
+            },
+            options: { responsive: true, maintainAspectRatio: true }
+        });
+    }
+
+    function updateTopClauses(results) {
+        const labelCount = {};
+        results.forEach(r => { labelCount[r.label] = (labelCount[r.label] || 0) + 1; });
+        const sorted = Object.entries(labelCount).sort((a, b) => b[1] - a[1]).slice(0, 8);
+        const ctx = document.getElementById('topClausesChart').getContext('2d');
+        if (topClausesChart) topClausesChart.destroy();
+        topClausesChart = new Chart(ctx, {
+            type: 'bar',
+            data: { 
+                labels: sorted.map(s => s[0]), 
+                datasets: [{ 
+                    label: 'Frequency', 
+                    data: sorted.map(s => s[1]), 
+                    backgroundColor: '#1E4A6F',
+                    borderRadius: 8
+                }] 
+            },
+            options: { 
+                indexAxis: 'y', 
+                responsive: true, 
+                maintainAspectRatio: true,
+                plugins: {
+                    legend: { position: 'top' }
+                }
+            }
+        });
+    }
+
+    function escapeHtml(str) { 
+        return str.replace(/[&<>]/g, function(m) { 
+            return m === '&' ? '&amp;' : m === '<' ? '&lt;' : '&gt;'; 
+        }); 
+    }
+
+    uploadBtn.addEventListener('click', () => fileInput.click());
+    fileInput.addEventListener('change', (e) => {
+        if (e.target.files.length) {
+            const file = e.target.files[0];
+            fileNameDisplay.innerText = file.name;
+            loadingIndicator.style.display = 'block';
+            resultsSection.style.display = 'none';
+            analyzePDF(file);
+        }
+    });
+
+    document.getElementById('exportPdfBtn').addEventListener('click', () => {
+        if (!currentResults.length) { showError('No results to export'); return; }
+        const params = new URLSearchParams({ results: JSON.stringify(currentResults) });
+        window.open(`/export_pdf?${params}`, '_blank');
+    });
+
+    uploadZone.addEventListener('dragover', (e) => { 
+        e.preventDefault(); 
+        uploadZone.classList.add('drag-over'); 
+    });
+    
+    uploadZone.addEventListener('dragleave', () => { 
+        uploadZone.classList.remove('drag-over'); 
+    });
+    
+    uploadZone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        uploadZone.classList.remove('drag-over');
+        const file = e.dataTransfer.files[0];
+        if (file && file.type === 'application/pdf') {
+            fileNameDisplay.innerText = file.name;
+            loadingIndicator.style.display = 'block';
+            resultsSection.style.display = 'none';
+            analyzePDF(file);
+        } else {
+            showError('Only PDF files are supported');
+        }
+    });
+</script>
+</body>
+</html>
